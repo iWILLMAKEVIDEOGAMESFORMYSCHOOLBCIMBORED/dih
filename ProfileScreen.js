@@ -1,289 +1,273 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Image, Dimensions, StatusBar, FlatList,
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  Image, SectionList, StatusBar,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useMusic } from '../context/MusicContext';
 import { JUICE_WRLD_SONGS, ALBUMS, PLAYLISTS, formatDuration } from '../data/songs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width } = Dimensions.get('window');
+const TABS = ['Songs', 'Albums', 'Playlists', 'Unreleased'];
 
-const FEATURED = JUICE_WRLD_SONGS.slice(0, 5);
+export default function LibraryScreen() {
+  const { playSong, currentSong, isPlaying, toggleLike, isLiked } = useMusic();
+  const [activeTab, setActiveTab] = useState('Songs');
+  const [sortBy, setSortBy] = useState('title');
+  const insets = useSafeAreaInsets();
 
-export default function HomeScreen({ navigation }) {
-  const { playSong, currentSong, isPlaying, togglePlay, isLiked, recentlyPlayed } = useMusic();
-  const [greeting, setGreeting] = useState('');
-
-  useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good morning');
-    else if (hour < 18) setGreeting('Good afternoon');
-    else setGreeting('Good evening');
-  }, []);
-
-  const handlePlayAll = () => {
-    playSong(JUICE_WRLD_SONGS[0], JUICE_WRLD_SONGS);
+  const getSortedSongs = (songs) => {
+    return [...songs].sort((a, b) => {
+      if (sortBy === 'title') return a.title.localeCompare(b.title);
+      if (sortBy === 'year') return a.year - b.year;
+      if (sortBy === 'duration') return a.duration - b.duration;
+      return 0;
+    });
   };
 
-  const renderFeaturedSong = ({ item, index }) => (
-    <TouchableOpacity
-      style={styles.featuredCard}
-      onPress={() => playSong(item, FEATURED)}
-      activeOpacity={0.85}
-    >
-      <Image source={{ uri: item.albumArt }} style={styles.featuredArt} />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.9)']}
-        style={styles.featuredOverlay}
-      />
-      <View style={styles.featuredInfo}>
-        {item.type === 'unreleased' && (
-          <View style={styles.unreleasedBadge}>
-            <Text style={styles.unreleasedText}>UNRELEASED</Text>
-          </View>
-        )}
-        <Text style={styles.featuredTitle} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.featuredAlbum}>{item.album} • {item.year}</Text>
-      </View>
-      <View style={styles.featuredPlayBtn}>
-        <Ionicons
-          name={currentSong?.id === item.id && isPlaying ? 'pause-circle' : 'play-circle'}
-          size={44}
-          color="#9B59B6"
-        />
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderSongRow = ({ item }) => (
+  const renderSong = ({ item, index }) => (
     <TouchableOpacity
       style={[styles.songRow, currentSong?.id === item.id && styles.songRowActive]}
-      onPress={() => playSong(item)}
+      onPress={() => {
+        const list = activeTab === 'Unreleased'
+          ? JUICE_WRLD_SONGS.filter(s => s.type === 'unreleased')
+          : JUICE_WRLD_SONGS;
+        playSong(item, list);
+      }}
       activeOpacity={0.7}
     >
-      <Image source={{ uri: item.albumArt }} style={styles.songRowArt} />
-      <View style={styles.songRowInfo}>
-        <Text style={[styles.songRowTitle, currentSong?.id === item.id && styles.activeText]} numberOfLines={1}>
+      <Image source={{ uri: item.albumArt }} style={styles.art} />
+      <View style={styles.info}>
+        <Text
+          style={[styles.title, currentSong?.id === item.id && styles.activeTitle]}
+          numberOfLines={1}
+        >
           {item.title}
         </Text>
-        <Text style={styles.songRowMeta}>{item.year} • {formatDuration(item.duration)}</Text>
+        <Text style={styles.meta}>{item.album} • {formatDuration(item.duration)}</Text>
       </View>
-      {item.type === 'unreleased' && (
-        <View style={styles.smallBadge}>
-          <Text style={styles.smallBadgeText}>🔒</Text>
-        </View>
-      )}
-      {currentSong?.id === item.id && (
-        <View style={styles.playingIndicator}>
-          <Ionicons name="musical-notes" size={16} color="#9B59B6" />
-        </View>
-      )}
+      <TouchableOpacity onPress={() => toggleLike(item.id)} style={styles.likeBtn}>
+        <Ionicons
+          name={isLiked(item.id) ? 'heart' : 'heart-outline'}
+          size={18}
+          color={isLiked(item.id) ? '#9B59B6' : '#555'}
+        />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 
-  const renderAlbum = ({ item }) => (
-    <TouchableOpacity
-      style={styles.albumCard}
-      onPress={() => navigation.navigate('Library', { album: item })}
-      activeOpacity={0.8}
-    >
-      <Image source={{ uri: item.art }} style={styles.albumArt} />
-      <Text style={styles.albumTitle} numberOfLines={2}>{item.title}</Text>
-      <Text style={styles.albumYear}>{item.year}</Text>
-    </TouchableOpacity>
-  );
+  const renderAlbum = ({ item }) => {
+    const albumSongs = JUICE_WRLD_SONGS.filter(s => s.album === item.title);
+    return (
+      <TouchableOpacity
+        style={styles.albumRow}
+        onPress={() => albumSongs.length && playSong(albumSongs[0], albumSongs)}
+        activeOpacity={0.7}
+      >
+        <Image source={{ uri: item.art }} style={styles.albumArt} />
+        <View style={styles.albumInfo}>
+          <Text style={styles.albumTitle}>{item.title}</Text>
+          <Text style={styles.albumMeta}>{item.year} • {albumSongs.length} songs</Text>
+          {item.type === 'unreleased' && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>VAULT</Text>
+            </View>
+          )}
+        </View>
+        <Ionicons name="play-circle" size={34} color="#9B59B6" />
+      </TouchableOpacity>
+    );
+  };
 
-  const renderPlaylist = ({ item }) => (
-    <TouchableOpacity
-      style={styles.playlistCard}
-      onPress={() => {
-        const songs = item.songIds.map(id => JUICE_WRLD_SONGS.find(s => s.id === id)).filter(Boolean);
-        if (songs.length) playSong(songs[0], songs);
-      }}
-      activeOpacity={0.8}
-    >
-      <Image source={{ uri: item.art }} style={styles.playlistArt} />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.playlistOverlay} />
-      <Text style={styles.playlistTitle} numberOfLines={2}>{item.title}</Text>
-    </TouchableOpacity>
-  );
+  const renderPlaylist = ({ item }) => {
+    const songs = item.songIds.map(id => JUICE_WRLD_SONGS.find(s => s.id === id)).filter(Boolean);
+    return (
+      <TouchableOpacity
+        style={styles.playlistRow}
+        onPress={() => songs.length && playSong(songs[0], songs)}
+        activeOpacity={0.7}
+      >
+        <Image source={{ uri: item.art }} style={styles.playlistArt} />
+        <View style={styles.playlistInfo}>
+          <Text style={styles.playlistTitle}>{item.title}</Text>
+          <Text style={styles.playlistMeta}>{songs.length} songs • {item.description}</Text>
+        </View>
+        <Ionicons name="play-circle" size={34} color="#9B59B6" />
+      </TouchableOpacity>
+    );
+  };
+
+  const renderContent = () => {
+    if (activeTab === 'Songs') {
+      return (
+        <FlatList
+          data={getSortedSongs(JUICE_WRLD_SONGS)}
+          renderItem={renderSong}
+          keyExtractor={i => i.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <View style={styles.sortRow}>
+              <Text style={styles.sortLabel}>Sort by:</Text>
+              {['title', 'year', 'duration'].map(s => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.sortChip, sortBy === s && styles.sortChipActive]}
+                  onPress={() => setSortBy(s)}
+                >
+                  <Text style={[styles.sortChipText, sortBy === s && styles.sortChipTextActive]}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          }
+        />
+      );
+    }
+
+    if (activeTab === 'Albums') {
+      return (
+        <FlatList
+          data={ALBUMS}
+          renderItem={renderAlbum}
+          keyExtractor={i => i.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+        />
+      );
+    }
+
+    if (activeTab === 'Playlists') {
+      return (
+        <FlatList
+          data={PLAYLISTS}
+          renderItem={renderPlaylist}
+          keyExtractor={i => i.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+        />
+      );
+    }
+
+    if (activeTab === 'Unreleased') {
+      const unreleased = getSortedSongs(JUICE_WRLD_SONGS.filter(s => s.type === 'unreleased'));
+      return (
+        <FlatList
+          data={unreleased}
+          renderItem={renderSong}
+          keyExtractor={i => i.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <View style={styles.vaultHeader}>
+              <Text style={styles.vaultEmoji}>🔒</Text>
+              <Text style={styles.vaultTitle}>The Vault</Text>
+              <Text style={styles.vaultSub}>{unreleased.length} unreleased & rare tracks</Text>
+              <TouchableOpacity
+                style={styles.playVaultBtn}
+                onPress={() => unreleased.length && playSong(unreleased[0], unreleased)}
+              >
+                <Ionicons name="play" size={16} color="#fff" />
+                <Text style={styles.playVaultText}>Play Vault</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      );
+    }
+  };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        {/* Header */}
-        <LinearGradient
-          colors={['#1A0A2E', '#0A0A0F']}
-          style={styles.header}
-        >
-          <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.greeting}>{greeting}</Text>
-              <Text style={styles.headerTitle}>Juiceify 🍇</Text>
-            </View>
-            <TouchableOpacity style={styles.searchBtn} onPress={() => navigation.navigate('Search')}>
-              <Ionicons name="search" size={22} color="#fff" />
-            </TouchableOpacity>
-          </View>
 
-          {/* Quick play row */}
-          <View style={styles.quickRow}>
-            {['All Songs', 'Unreleased', 'Essentials'].map((label, i) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.quickChip}
-                onPress={handlePlayAll}
-              >
-                <Text style={styles.quickChipText}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </LinearGradient>
-
-        {/* Featured / Now Trending */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🔥 Trending Now</Text>
-          </View>
-          <FlatList
-            data={FEATURED}
-            renderItem={renderFeaturedSong}
-            keyExtractor={i => i.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
-          />
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Your Library</Text>
+        <View style={styles.statsRow}>
+          <Text style={styles.statsText}>{JUICE_WRLD_SONGS.length} songs total</Text>
+          <Text style={styles.statsDot}>•</Text>
+          <Text style={styles.statsText}>{JUICE_WRLD_SONGS.filter(s => s.type === 'unreleased').length} unreleased</Text>
         </View>
+      </View>
 
-        {/* Albums */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>💿 Albums & Projects</Text>
-          </View>
-          <FlatList
-            data={ALBUMS}
-            renderItem={renderAlbum}
-            keyExtractor={i => i.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
-          />
-        </View>
-
-        {/* Curated Playlists */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🎵 Curated for You</Text>
-          </View>
-          <FlatList
-            data={PLAYLISTS}
-            renderItem={renderPlaylist}
-            keyExtractor={i => i.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
-          />
-        </View>
-
-        {/* Recently Played */}
-        {recentlyPlayed.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>⏱ Recently Played</Text>
-            </View>
-            <FlatList
-              data={recentlyPlayed.slice(0, 10)}
-              renderItem={renderSongRow}
-              keyExtractor={i => i.id}
-              scrollEnabled={false}
-              contentContainerStyle={{ paddingHorizontal: 16 }}
-            />
-          </View>
-        )}
-
-        {/* All Songs Quick Access */}
-        <View style={[styles.section, { marginBottom: 100 }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>🎶 All Songs</Text>
-            <TouchableOpacity onPress={handlePlayAll}>
-              <Text style={styles.seeAll}>Play All</Text>
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={JUICE_WRLD_SONGS.slice(0, 15)}
-            renderItem={renderSongRow}
-            keyExtractor={i => i.id}
-            scrollEnabled={false}
-            contentContainerStyle={{ paddingHorizontal: 16 }}
-          />
+      {/* Tabs */}
+      <View style={styles.tabs}>
+        {TABS.map(tab => (
           <TouchableOpacity
-            style={styles.viewMoreBtn}
-            onPress={() => navigation.navigate('Library')}
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.tabActive]}
+            onPress={() => setActiveTab(tab)}
           >
-            <Text style={styles.viewMoreText}>View All {JUICE_WRLD_SONGS.length} Songs</Text>
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+              {tab}
+            </Text>
+            {tab === 'Unreleased' && (
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>🔒</Text>
+              </View>
+            )}
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+        ))}
+      </View>
+
+      {renderContent()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0F' },
-  scroll: { paddingBottom: 20 },
 
-  header: { paddingTop: 56, paddingBottom: 20, paddingHorizontal: 16 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  greeting: { fontSize: 13, color: '#aaa', fontWeight: '400' },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  searchBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(155,89,182,0.25)', alignItems: 'center', justifyContent: 'center' },
+  header: { paddingHorizontal: 16, paddingBottom: 12, paddingTop: 8 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statsText: { color: '#888', fontSize: 12 },
+  statsDot: { color: '#555', fontSize: 12 },
 
-  quickRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  quickChip: { backgroundColor: 'rgba(155,89,182,0.2)', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: 'rgba(155,89,182,0.4)' },
-  quickChipText: { color: '#D7BDE2', fontSize: 12, fontWeight: '600' },
+  tabs: { flexDirection: 'row', paddingHorizontal: 16, gap: 6, marginBottom: 12 },
+  tab: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, backgroundColor: '#1A1A24', borderWidth: 1, borderColor: '#2A2A35', flexDirection: 'row', alignItems: 'center', gap: 4 },
+  tabActive: { backgroundColor: 'rgba(155,89,182,0.25)', borderColor: '#9B59B6' },
+  tabText: { color: '#888', fontSize: 13, fontWeight: '500' },
+  tabTextActive: { color: '#D7BDE2', fontWeight: '700' },
+  tabBadge: {},
+  tabBadgeText: { fontSize: 11 },
 
-  section: { marginTop: 24 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  seeAll: { fontSize: 13, color: '#9B59B6', fontWeight: '600' },
-
-  featuredCard: { width: width * 0.72, height: 200, borderRadius: 16, overflow: 'hidden', position: 'relative' },
-  featuredArt: { width: '100%', height: '100%' },
-  featuredOverlay: { ...StyleSheet.absoluteFillObject },
-  featuredInfo: { position: 'absolute', bottom: 12, left: 12, right: 60 },
-  featuredTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  featuredAlbum: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
-  featuredPlayBtn: { position: 'absolute', bottom: 8, right: 8 },
-  unreleasedBadge: { backgroundColor: '#9B59B6', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: 4 },
-  unreleasedText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-
-  albumCard: { width: 130 },
-  albumArt: { width: 130, height: 130, borderRadius: 10, marginBottom: 6 },
-  albumTitle: { fontSize: 12, fontWeight: '600', color: '#fff', lineHeight: 16 },
-  albumYear: { fontSize: 11, color: '#888', marginTop: 2 },
-
-  playlistCard: { width: 150, height: 150, borderRadius: 12, overflow: 'hidden', position: 'relative' },
-  playlistArt: { width: '100%', height: '100%' },
-  playlistOverlay: { ...StyleSheet.absoluteFillObject },
-  playlistTitle: { position: 'absolute', bottom: 8, left: 8, right: 8, fontSize: 13, fontWeight: '700', color: '#fff' },
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, marginBottom: 4 },
+  sortLabel: { color: '#666', fontSize: 12 },
+  sortChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: '#1A1A24' },
+  sortChipActive: { backgroundColor: 'rgba(155,89,182,0.2)' },
+  sortChipText: { color: '#666', fontSize: 12 },
+  sortChipTextActive: { color: '#9B59B6', fontWeight: '600' },
 
   songRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderRadius: 10, marginBottom: 2 },
   songRowActive: { backgroundColor: 'rgba(155,89,182,0.1)' },
-  songRowArt: { width: 46, height: 46, borderRadius: 8, marginRight: 12 },
-  songRowInfo: { flex: 1 },
-  songRowTitle: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 2 },
-  songRowMeta: { fontSize: 11, color: '#888' },
-  activeText: { color: '#9B59B6' },
-  smallBadge: { marginRight: 4 },
-  smallBadgeText: { fontSize: 14 },
-  playingIndicator: { marginLeft: 4 },
+  art: { width: 46, height: 46, borderRadius: 8, marginRight: 12 },
+  info: { flex: 1 },
+  title: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  activeTitle: { color: '#9B59B6' },
+  meta: { color: '#666', fontSize: 11 },
+  likeBtn: { padding: 8 },
 
-  viewMoreBtn: { marginHorizontal: 16, marginTop: 12, backgroundColor: 'rgba(155,89,182,0.2)', borderRadius: 10, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(155,89,182,0.3)' },
-  viewMoreText: { color: '#D7BDE2', fontWeight: '600', fontSize: 14 },
+  albumRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderRadius: 12, marginBottom: 4 },
+  albumArt: { width: 60, height: 60, borderRadius: 10, marginRight: 12 },
+  albumInfo: { flex: 1 },
+  albumTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  albumMeta: { color: '#888', fontSize: 12 },
+  badge: { backgroundColor: '#9B59B6', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
+  badgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+
+  playlistRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderRadius: 12, marginBottom: 4 },
+  playlistArt: { width: 60, height: 60, borderRadius: 10, marginRight: 12 },
+  playlistInfo: { flex: 1 },
+  playlistTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  playlistMeta: { color: '#888', fontSize: 12 },
+
+  vaultHeader: { alignItems: 'center', paddingVertical: 24, marginBottom: 8 },
+  vaultEmoji: { fontSize: 48, marginBottom: 8 },
+  vaultTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  vaultSub: { color: '#888', fontSize: 14, marginBottom: 16 },
+  playVaultBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#9B59B6', paddingVertical: 10, paddingHorizontal: 24, borderRadius: 25 },
+  playVaultText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });
