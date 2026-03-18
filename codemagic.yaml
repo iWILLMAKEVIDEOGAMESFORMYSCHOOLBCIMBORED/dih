@@ -84,53 +84,49 @@ workflows:
 
           echo "workspace=$WORKSPACE  scheme=$SCHEME"
 
-          # Use CONFIGURATION_BUILD_DIR to force .app into a known folder
-          BUILD_OUT="$CM_BUILD_DIR/app_output"
-          mkdir -p "$BUILD_OUT"
+          SYMROOT="$CM_BUILD_DIR/build"
 
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Release \
             -sdk iphoneos \
-            CONFIGURATION_BUILD_DIR="$BUILD_OUT" \
+            SYMROOT="$SYMROOT" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
 
-          echo "=== Build output ==="
-          find "$BUILD_OUT" -name "*.app" -type d
+          echo "=== Searching entire build dir for .app ==="
+          find "$SYMROOT" -name "*.app" -type d 2>/dev/null || echo "none found"
+
+          echo "=== Full build tree (dirs only) ==="
+          find "$SYMROOT" -type d | head -40
 
       - name: Package IPA
         script: |
           set -e
+          SYMROOT="$CM_BUILD_DIR/build"
 
-          BUILD_OUT="$CM_BUILD_DIR/app_output"
-
-          echo "=== All .app dirs in build output ==="
-          find "$BUILD_OUT" -name "*.app" -type d
-
-          # Get the .app — exclude test bundles
-          APP_PATH=$(find "$BUILD_OUT" \
-            -name "*.app" \
-            -type d \
+          # Find .app — try Release-iphoneos first, then anywhere
+          APP_PATH=$(find "$SYMROOT" -name "*.app" -type d \
             -not -name "*.xctest" \
-            | head -1)
+            -not -path "*/Build/Intermediates*" \
+            2>/dev/null | head -1)
 
-          echo "Using: $APP_PATH"
+          echo "APP_PATH=$APP_PATH"
 
           if [ -z "$APP_PATH" ]; then
-            echo "ERROR: no .app found. Full tree:"
-            find "$BUILD_OUT" -type d
+            echo "=== FULL TREE ==="
+            find "$SYMROOT" -type d
             exit 1
           fi
 
-          # Package as proper IPA
-          PAYLOAD_DIR="$CM_BUILD_DIR/Payload"
-          rm -rf "$PAYLOAD_DIR"
-          mkdir -p "$PAYLOAD_DIR"
-          cp -r "$APP_PATH" "$PAYLOAD_DIR/"
+          # Pack into IPA
+          PAYLOAD="$CM_BUILD_DIR/Payload"
+          rm -rf "$PAYLOAD"
+          mkdir -p "$PAYLOAD"
+          cp -r "$APP_PATH" "$PAYLOAD/"
 
           mkdir -p "$CM_EXPORT_DIR"
           cd "$CM_BUILD_DIR"
@@ -138,7 +134,7 @@ workflows:
 
           echo "=== IPA structure ==="
           unzip -l "$CM_EXPORT_DIR/Juiceify.ipa" | head -10
-          echo "✅ Done"
+          echo "✅ IPA ready"
 
     artifacts:
       - $CM_EXPORT_DIR/Juiceify.ipa
